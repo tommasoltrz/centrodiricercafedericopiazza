@@ -181,6 +181,10 @@ export function parseURL() {
   }
 }
 
+const URL_LIMIT = 2048
+const URL_WARN_RATIO = 0.95
+let urlWarningShown = false
+
 /** Merge patch into current URLSearchParams and call history.replaceState. */
 export function writeURL(patch) {
   const params = new URLSearchParams(window.location.search)
@@ -191,5 +195,14 @@ export function writeURL(patch) {
       params.set(key, String(val))
     }
   })
-  history.replaceState(null, '', '?' + params.toString())
+  const qs = '?' + params.toString()
+  const fullLength = window.location.origin.length + window.location.pathname.length + qs.length
+  history.replaceState(null, '', qs)
+
+  if (fullLength >= URL_LIMIT * URL_WARN_RATIO && !urlWarningShown) {
+    urlWarningShown = true
+    alert(`URL is at ${Math.round(fullLength / URL_LIMIT * 100)}% of the browser limit (${fullLength}/${URL_LIMIT} chars). Adding more items may cause sharing issues.`)
+  } else if (fullLength < URL_LIMIT * URL_WARN_RATIO) {
+    urlWarningShown = false
+  }
 }
