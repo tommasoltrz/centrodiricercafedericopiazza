@@ -1,3 +1,4 @@
+import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from 'lz-string'
 import { PARAMETRIC_PRESETS, MODEL_REGISTRY } from '../data/furnitureCatalog'
 
 // ── Compact furniture serialization ───────────────────────────────────────────
@@ -67,17 +68,25 @@ function expandItem(o) {
 
 export function serializeItems(items) {
   if (!items.length) return null
-  return btoa(JSON.stringify(items.map(compactItem)))
+  return compressToEncodedURIComponent(JSON.stringify(items.map(compactItem)))
 }
 
 export function deserializeItems(raw) {
+  // Try lz-string compressed format first
+  const lz = decompressFromEncodedURIComponent(raw)
+  if (lz) {
+    try {
+      const arr = JSON.parse(lz)
+      if (Array.isArray(arr)) return arr.map(o => (o.m !== undefined || o.k !== undefined) ? expandItem(o) : o)
+    } catch { /* fall through */ }
+  }
+
+  // Legacy: base64-encoded (with or without URL encoding inside)
   let str = atob(raw)
-  // Handle legacy URL-encoded wrapping
   if (str.startsWith('%5B') || str.startsWith('%7B')) {
     str = decodeURIComponent(str)
   }
   const arr = JSON.parse(str)
-  // Compact items have `m` or `k` keys; full items have `type`
   return arr.map(o => (o.m !== undefined || o.k !== undefined) ? expandItem(o) : o)
 }
 
