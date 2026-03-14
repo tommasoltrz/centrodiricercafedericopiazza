@@ -11,7 +11,7 @@ import FurnitureManager from './components/FurnitureManager'
 import FurnitureCatalog from './components/FurnitureCatalog'
 import FurniturePanel from './components/FurniturePanel'
 import { PARAMETRIC_PRESETS } from './data/furnitureCatalog'
-import { parseURL, writeURL } from './hooks/useURLState'
+import { parseURL, writeURL, serializeItems } from './hooks/useURLState'
 import './index.css'
 
 // ── Fixed dimensions ─────────────────────────────────────────────
@@ -229,9 +229,7 @@ export default function App() {
 
   useEffect(() => {
     writeURL({
-      items: furnitureItems.length > 0
-        ? btoa(encodeURIComponent(JSON.stringify(furnitureItems)))
-        : null,
+      items: serializeItems(furnitureItems),
     })
   }, [furnitureItems])
 

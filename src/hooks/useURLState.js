@@ -1,3 +1,80 @@
+import { PARAMETRIC_PRESETS, MODEL_REGISTRY } from '../data/furnitureCatalog'
+
+// ── Compact furniture serialization ───────────────────────────────────────────
+// Only stores fields that differ from catalog defaults to minimize URL size.
+
+const modelById = Object.fromEntries(MODEL_REGISTRY.map(m => [m.id, m]))
+
+function round(n, d = 2) { return Math.round(n * 10 ** d) / 10 ** d }
+
+function compactItem(item) {
+  const o = {}
+  if (item.type === 'model') {
+    // Find registry id from modelPath
+    const entry = MODEL_REGISTRY.find(m => m.path === item.modelPath)
+    o.m = entry ? entry.id : item.modelPath
+    if (item.scale !== 1) o.s = round(item.scale)
+  } else {
+    o.k = item.preset
+    const preset = PARAMETRIC_PRESETS[item.preset]
+    if (preset) {
+      if (item.width  !== preset.defaultWidth)  o.w = round(item.width)
+      if (item.height !== preset.defaultHeight) o.h = round(item.height)
+      if (item.depth  !== preset.defaultDepth)  o.d = round(item.depth)
+      if (item.color  !== preset.defaultColor)  o.c = item.color.replace('#', '')
+    } else {
+      o.w = round(item.width); o.h = round(item.height); o.d = round(item.depth)
+      o.c = item.color.replace('#', '')
+    }
+  }
+  const p = item.position.map(v => round(v))
+  if (p[0] !== 0 || p[1] !== 0 || p[2] !== 0) o.p = p
+  if (round(item.rotation) !== 0) o.r = round(item.rotation)
+  if (item.floor === 'mezzanine') o.f = 'm'
+  return o
+}
+
+function expandItem(o) {
+  const base = {
+    id: crypto.randomUUID(),
+    position: o.p || [0, 0, 0],
+    rotation: o.r || 0,
+    floor: o.f === 'm' ? 'mezzanine' : 'ground',
+  }
+  if (o.m) {
+    const entry = modelById[o.m]
+    return {
+      ...base,
+      type: 'model',
+      modelPath: entry ? entry.path : o.m,
+      label: entry ? entry.label : o.m,
+      scale: o.s ?? 1,
+    }
+  } else {
+    const preset = PARAMETRIC_PRESETS[o.k]
+    return {
+      ...base,
+      type: 'parametric',
+      preset: o.k,
+      label: preset ? preset.label : o.k,
+      width:  o.w ?? (preset ? preset.defaultWidth  : 1),
+      height: o.h ?? (preset ? preset.defaultHeight : 1),
+      depth:  o.d ?? (preset ? preset.defaultDepth  : 1),
+      color:  o.c ? '#' + o.c : (preset ? preset.defaultColor : '#9ca3af'),
+    }
+  }
+}
+
+export function serializeItems(items) {
+  if (!items.length) return null
+  return btoa(JSON.stringify(items.map(compactItem)))
+}
+
+export function deserializeItems(raw) {
+  const compact = JSON.parse(atob(raw))
+  return compact.map(expandItem)
+}
+
 // ── URL state helpers ─────────────────────────────────────────────────────────
 // Encodes all app state into URLSearchParams and restores from them on load.
 
@@ -54,7 +131,14 @@ export function parseURL() {
   let items = DEFAULTS.items
   try {
     const raw = p('items')
-    if (raw) items = JSON.parse(decodeURIComponent(atob(raw)))
+    if (raw) {
+      // Try compact format first, fall back to legacy (full JSON)
+      try {
+        items = deserializeItems(raw)
+      } catch {
+        items = JSON.parse(decodeURIComponent(atob(raw)))
+      }
+    }
   } catch {
     items = DEFAULTS.items
   }
