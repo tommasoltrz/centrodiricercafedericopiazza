@@ -21,7 +21,7 @@ export default function FurnitureItem({ item, isSelected, onSelect }) {
   return (
     <group
       ref={groupRef}
-      position={isSelected ? [0, 0, 0] : [item.position[0], floorY, item.position[2]]}
+      position={isSelected ? [0, 0, 0] : [item.position[0], item.position[1] + floorY, item.position[2]]}
       rotation={isSelected ? [0, 0, 0] : [0, item.rotation, 0]}
       onClick={e => { e.stopPropagation(); onSelect(item.id) }}
       onPointerOver={() => { document.body.style.cursor = 'pointer' }}

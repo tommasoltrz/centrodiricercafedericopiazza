@@ -1,6 +1,6 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { OrbitControls, TransformControls } from '@react-three/drei'
+import { OrbitControls, TransformControls, Text3D, Center } from '@react-three/drei'
 import { useControls } from 'leva'
 import Room from './components/Room'
 import Mezzanine from './components/Mezzanine'
@@ -11,6 +11,7 @@ import FurnitureManager from './components/FurnitureManager'
 import FurnitureCatalog from './components/FurnitureCatalog'
 import FurniturePanel from './components/FurniturePanel'
 import { PARAMETRIC_PRESETS } from './data/furnitureCatalog'
+import { parseURL, writeURL } from './hooks/useURLState'
 import './index.css'
 
 // ── Fixed dimensions ─────────────────────────────────────────────
@@ -41,18 +42,16 @@ const winW    = 2.0;  const winH    = 2.0;  const winSill = 0.9;  const winX = -
 
 export default function App() {
   const orbitRef = useRef()
-  const flushRef = useRef(null)
+
+  // ── Restore state from URL (once on mount) ───────────────────
+  const initURL = useMemo(() => parseURL(), [])
 
   // ── Furniture state ──────────────────────────────────────────
-  const [furnitureItems, setFurnitureItems] = useState([])
+  const [furnitureItems, setFurnitureItems] = useState(initURL.items)
   const [selectedId, setSelectedId] = useState(null)
   const [transformMode, setTransformMode] = useState('translate')
 
-  // Flush transform position to state, then deselect
-  const deselect = useCallback(() => {
-    if (flushRef.current) flushRef.current()
-    setSelectedId(null)
-  }, [])
+  const deselect = useCallback(() => setSelectedId(null), [])
 
   const selectedItem = furnitureItems.find(i => i.id === selectedId) || null
 
@@ -139,42 +138,89 @@ export default function App() {
     return () => window.removeEventListener('keydown', handler)
   }, [selectedId, handleDelete, handleDuplicate, deselect])
 
-  // ── Leva controls ────────────────────────────────────────────
+  // ── Leva controls (initial values from URL) ──────────────────
   const { showNorthWall, showSouthWall, showEastWall, showWestWall, showCeiling, showMeasurements, showGrid, showLighting, bgColor } = useControls('Display', {
-    showNorthWall:    { value: true,      label: 'North wall'        },
-    showSouthWall:    { value: true,      label: 'South wall'        },
-    showEastWall:     { value: false,     label: 'East wall'         },
-    showWestWall:     { value: true,      label: 'West wall'         },
-    showCeiling:      { value: true,      label: 'Ceiling'           },
-    showMeasurements: { value: true,      label: 'Measurements'      },
-    showGrid:         { value: true,      label: 'Grid'              },
-    showLighting:     { value: true,      label: 'Lighting'          },
-    bgColor:          { value: '#908c8c', label: 'Background'        },
+    showNorthWall:    { value: initURL.showNorthWall,    label: 'North wall'        },
+    showSouthWall:    { value: initURL.showSouthWall,    label: 'South wall'        },
+    showEastWall:     { value: initURL.showEastWall,     label: 'East wall'         },
+    showWestWall:     { value: initURL.showWestWall,     label: 'West wall'         },
+    showCeiling:      { value: initURL.showCeiling,      label: 'Ceiling'           },
+    showMeasurements: { value: initURL.showMeasurements, label: 'Measurements'      },
+    showGrid:         { value: initURL.showGrid,         label: 'Grid'              },
+    showLighting:     { value: initURL.showLighting,     label: 'Lighting'          },
+    bgColor:          { value: initURL.bgColor,          label: 'Background'        },
   })
 
   const { ambientInt, topInt, frontInt, backInt } = useControls('Lighting', {
-    ambientInt: { value: 0.8, min: 0, max: 2, step: 0.05, label: 'Ambient'   },
-    topInt:     { value: 0.0, min: 0, max: 2, step: 0.05, label: 'Top'       },
-    frontInt:   { value: 0.0, min: 0, max: 2, step: 0.05, label: 'Front'     },
-    backInt:    { value: 0.0, min: 0, max: 2, step: 0.05, label: 'Back'      },
+    ambientInt: { value: initURL.ambientInt, min: 0, max: 2, step: 0.05, label: 'Ambient'   },
+    topInt:     { value: initURL.topInt,     min: 0, max: 2, step: 0.05, label: 'Top'       },
+    frontInt:   { value: initURL.frontInt,   min: 0, max: 2, step: 0.05, label: 'Front'     },
+    backInt:    { value: initURL.backInt,    min: 0, max: 2, step: 0.05, label: 'Back'      },
   })
 
   const { plOn, plInt, plDist } = useControls('Point Light', {
-    plOn:   { value: true,  label: 'Enabled'   },
-    plInt:  { value: 500, min: 0, max: 500, step: 5,   label: 'Intensity' },
-    plDist: { value: 17,  min: 1, max: 100, step: 1,   label: 'Distance'  },
+    plOn:   { value: initURL.plOn,   label: 'Enabled'   },
+    plInt:  { value: initURL.plInt,  min: 0, max: 500, step: 5,   label: 'Intensity' },
+    plDist: { value: initURL.plDist, min: 1, max: 100, step: 1,   label: 'Distance'  },
   })
 
   const [plObject, setPlObject] = useState(null)
+  const [plPos, setPlPos] = useState([initURL.plX, initURL.plY, initURL.plZ])
 
   const { roomWallColor, roomWallOpacity, bathWallColor, groundWallColor, railColor, mezzColor } = useControls('Colors', {
-    roomWallColor:   { value: '#ffffff', label: 'Room walls'         },
-    roomWallOpacity: { value: 1.0,  min: 0, max: 1, step: 0.01, label: 'Room walls opacity' },
-    bathWallColor:   { value: '#ffffff', label: 'Bathroom walls'     },
-    groundWallColor: { value: '#ffffff', label: 'Wall below mezz.'   },
-    railColor:       { value: '#ffffff', label: 'Rails'              },
-    mezzColor:       { value: '#7c3a0e', label: 'Mezzanine floor'    },
+    roomWallColor:   { value: initURL.roomWallColor,   label: 'Room walls'         },
+    roomWallOpacity: { value: initURL.roomWallOpacity, min: 0, max: 1, step: 0.01, label: 'Room walls opacity' },
+    bathWallColor:   { value: initURL.bathWallColor,   label: 'Bathroom walls'     },
+    groundWallColor: { value: initURL.groundWallColor, label: 'Wall below mezz.'   },
+    railColor:       { value: initURL.railColor,       label: 'Rails'              },
+    mezzColor:       { value: initURL.mezzColor,       label: 'Mezzanine floor'    },
   })
+
+  // ── Write URL when state changes ──────────────────────────────
+  useEffect(() => {
+    writeURL({
+      nw: showNorthWall    ? '1' : '0',
+      sw: showSouthWall    ? '1' : '0',
+      ew: showEastWall     ? '1' : '0',
+      ww: showWestWall     ? '1' : '0',
+      cl: showCeiling      ? '1' : '0',
+      ms: showMeasurements ? '1' : '0',
+      gr: showGrid         ? '1' : '0',
+      lt: showLighting     ? '1' : '0',
+      bg: bgColor.replace('#', ''),
+    })
+  }, [showNorthWall, showSouthWall, showEastWall, showWestWall, showCeiling, showMeasurements, showGrid, showLighting, bgColor])
+
+  useEffect(() => {
+    writeURL({ ai: ambientInt, ti: topInt, fi: frontInt, bi: backInt })
+  }, [ambientInt, topInt, frontInt, backInt])
+
+  useEffect(() => {
+    writeURL({ pl: plOn ? '1' : '0', pi: plInt, pd: plDist })
+  }, [plOn, plInt, plDist])
+
+  useEffect(() => {
+    writeURL({ plx: plPos[0], ply: plPos[1], plz: plPos[2] })
+  }, [plPos])
+
+  useEffect(() => {
+    writeURL({
+      rwc: roomWallColor.replace('#', ''),
+      rwo: roomWallOpacity,
+      bwc: bathWallColor.replace('#', ''),
+      gwc: groundWallColor.replace('#', ''),
+      rc:  railColor.replace('#', ''),
+      mc:  mezzColor.replace('#', ''),
+    })
+  }, [roomWallColor, roomWallOpacity, bathWallColor, groundWallColor, railColor, mezzColor])
+
+  useEffect(() => {
+    writeURL({
+      items: furnitureItems.length > 0
+        ? btoa(encodeURIComponent(JSON.stringify(furnitureItems)))
+        : null,
+    })
+  }, [furnitureItems])
 
   return (
     <div style={{ width: '100vw', height: '100vh' }}>
@@ -281,12 +327,11 @@ export default function App() {
           onSelect={handleSelect}
           onUpdate={handleUpdate}
           orbitRef={orbitRef}
-          flushRef={flushRef}
         />
 
         {plOn && (
           <>
-            <group ref={setPlObject} position={[0, 15, -5]}>
+            <group ref={setPlObject} position={plPos}>
               <pointLight intensity={plInt} distance={plDist} color="#fffbe6" />
               <mesh>
                 <sphereGeometry args={[0.15, 16, 16]} />
@@ -298,15 +343,53 @@ export default function App() {
                 object={plObject}
                 mode="translate"
                 onMouseDown={() => orbitRef.current && (orbitRef.current.enabled = false)}
-                onMouseUp={() => orbitRef.current && (orbitRef.current.enabled = true)}
+                onMouseUp={() => {
+                  orbitRef.current && (orbitRef.current.enabled = true)
+                  const { x, y, z } = plObject.position
+                  setPlPos([x, y, z])
+                }}
               />
             )}
           </>
         )}
 
+        {/* Building name — outside the north wall */}
+        <group position={[0, 0, 30]} rotation={[0, Math.PI, 0]}>
+          <Center position={[0, 2.9, 0]}>
+            <Text3D
+              font="/helvetiker_bold.typeface.json"
+              size={0.55}
+              height={0.18}
+              curveSegments={12}
+              bevelEnabled
+              bevelThickness={0.03}
+              bevelSize={0.02}
+              bevelSegments={4}
+            >
+              Centro di ricerca
+              <meshStandardMaterial color="#c8b89a" roughness={0.4} metalness={0.1} />
+            </Text3D>
+          </Center>
+          <Center position={[0, 2.1, 0]}>
+            <Text3D
+              font="/helvetiker_bold.typeface.json"
+              size={0.55}
+              height={0.18}
+              curveSegments={12}
+              bevelEnabled
+              bevelThickness={0.03}
+              bevelSize={0.02}
+              bevelSegments={4}
+            >
+              Federico Piazza
+              <meshStandardMaterial color="#c8b89a" roughness={0.4} metalness={0.1} />
+            </Text3D>
+          </Center>
+        </group>
+
         {showGrid && <gridHelper args={[60, 60, '#cbd5e1', '#e2e8f0']} position={[0, -0.03, 0]} />}
 
-        <OrbitControls ref={orbitRef} makeDefault target={[0, roofLowHeight / 2, 0]} />
+        <OrbitControls ref={orbitRef} makeDefault target={[0, roofLowHeight / 2, 0]} enableDamping={false} />
         <axesHelper args={[1.5]} />
       </Canvas>
     </div>

@@ -1,4 +1,5 @@
-import { useRef, useEffect, useCallback } from 'react'
+import { useRef, useEffect, useMemo, useCallback } from 'react'
+import * as THREE from 'three'
 import { TransformControls } from '@react-three/drei'
 import FurnitureItem from './FurnitureItem'
 
@@ -11,53 +12,72 @@ export default function FurnitureManager({
   onSelect,
   onUpdate,
   orbitRef,
-  flushRef,
 }) {
   const transformRef = useRef()
-  const selectedGroupRef = useRef()
+  // A manually-created THREE.Group that R3F won't reconcile position on
+  const wrapperGroup = useMemo(() => new THREE.Group(), [])
+  const lastPos = useRef({ x: 0, y: 0, z: 0, ry: 0 })
 
   const selectedItem = items.find(i => i.id === selectedId)
   const floorY = selectedItem?.floor === 'mezzanine' ? MEZZ_FLOOR_Y : 0
 
-  // Flush: read current position/rotation from the 3D object and sync to state
-  const flush = useCallback(() => {
-    const obj = selectedGroupRef.current
-    if (!obj || !selectedId) return
+  // Sync wrapper group to item state (selection change + panel edits)
+  useEffect(() => {
+    if (!selectedItem) return
+    const y = selectedItem.position[1] + floorY
+    wrapperGroup.position.set(selectedItem.position[0], y, selectedItem.position[2])
+    wrapperGroup.rotation.set(0, selectedItem.rotation, 0)
+    lastPos.current = {
+      x: selectedItem.position[0],
+      y: selectedItem.position[1],
+      z: selectedItem.position[2],
+      ry: selectedItem.rotation,
+    }
+  }, [selectedId, selectedItem?.rotation, selectedItem?.floor, wrapperGroup, floorY])
+
+  // Write latest transform into state
+  const syncToState = useCallback(() => {
+    if (!selectedId) return
+    const p = lastPos.current
     onUpdate(selectedId, {
-      position: [obj.position.x, 0, obj.position.z],
-      rotation: obj.rotation.y,
+      position: [p.x, p.y, p.z],
+      rotation: p.ry,
     })
   }, [selectedId, onUpdate])
 
-  // Expose flush to parent via ref
+  // Track position in a ref on every objectChange (no state update = no re-render)
   useEffect(() => {
-    if (flushRef) flushRef.current = flush
-  }, [flush, flushRef])
+    const controls = transformRef.current
+    if (!controls) return
+    const handler = () => {
+      lastPos.current = {
+        x: wrapperGroup.position.x,
+        y: wrapperGroup.position.y - floorY,
+        z: wrapperGroup.position.z,
+        ry: wrapperGroup.rotation.y,
+      }
+    }
+    controls.addEventListener('objectChange', handler)
+    return () => controls.removeEventListener('objectChange', handler)
+  }, [selectedId, transformMode, floorY, wrapperGroup])
 
-  // Disable orbit controls while dragging, and sync on drag end
+  // Disable orbit while dragging; sync to state on drag end
   useEffect(() => {
     const controls = transformRef.current
     if (!controls) return
     const handler = (e) => {
       if (orbitRef?.current) orbitRef.current.enabled = !e.value
-      if (!e.value) flush()
+      // Sync to state when drag ends
+      if (!e.value) syncToState()
     }
     controls.addEventListener('dragging-changed', handler)
     return () => controls.removeEventListener('dragging-changed', handler)
-  }, [selectedId, orbitRef, flush])
+  }, [selectedId, orbitRef, syncToState])
 
-  // Clamp Y to floor level during translate drag
+  // Sync to state before unmounting (deselection)
   useEffect(() => {
-    const controls = transformRef.current
-    if (!controls || transformMode !== 'translate') return
-    const handler = () => {
-      if (selectedGroupRef.current) {
-        selectedGroupRef.current.position.y = floorY
-      }
-    }
-    controls.addEventListener('objectChange', handler)
-    return () => controls.removeEventListener('objectChange', handler)
-  }, [selectedId, transformMode, floorY])
+    return () => syncToState()
+  }, [syncToState])
 
   return (
     <>
@@ -79,21 +99,20 @@ export default function FurnitureManager({
           mode={transformMode}
           translationSnap={0.05}
           rotationSnap={Math.PI / 12}
-          showY={false}
-        >
-          <group
-            ref={selectedGroupRef}
-            position={[selectedItem.position[0], floorY, selectedItem.position[2]]}
-            rotation={[0, selectedItem.rotation, 0]}
-          >
-            <FurnitureItem
-              item={selectedItem}
-              isSelected={true}
-              onSelect={onSelect}
-            />
-          </group>
-        </TransformControls>
+          object={wrapperGroup}
+        />
       )}
+
+      {/* Wrapper group is a <primitive> so R3F won't reset its position */}
+      <primitive object={wrapperGroup}>
+        {selectedItem && (
+          <FurnitureItem
+            item={selectedItem}
+            isSelected={true}
+            onSelect={onSelect}
+          />
+        )}
+      </primitive>
     </>
   )
 }
