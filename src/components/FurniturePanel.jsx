@@ -50,12 +50,44 @@ const dangerBtn = { ...smallBtn, background: '#991b1b', borderColor: '#991b1b' }
 
 export default function FurniturePanel({
   item,
+  selectedCount,
   transformMode,
   onUpdate,
   onDelete,
+  onDeleteSelected,
   onDuplicate,
   onSetTransformMode,
 }) {
+  if (!item && !selectedCount) return null
+
+  // Multi-select: show only shared controls
+  if (!item && selectedCount > 1) {
+    return (
+      <div style={panelStyle}>
+        <div style={{ fontWeight: 700, marginBottom: 10, fontSize: 14 }}>
+          {selectedCount} items selected
+        </div>
+        <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 8 }}>
+          Shift+click to add/remove items
+        </div>
+        <div style={{ marginTop: 6, marginBottom: 2, fontSize: 12, color: '#94a3b8' }}>Tool</div>
+        <div style={btnRow}>
+          <button
+            style={transformMode === 'translate' ? activeBtn : smallBtn}
+            onClick={() => onSetTransformMode('translate')}
+          >Move</button>
+          <button
+            style={transformMode === 'rotate' ? activeBtn : smallBtn}
+            onClick={() => onSetTransformMode('rotate')}
+          >Rotate</button>
+        </div>
+        <div style={btnRow}>
+          <button style={dangerBtn} onClick={onDeleteSelected}>Delete all</button>
+        </div>
+      </div>
+    )
+  }
+
   if (!item) return null
 
   const update = (field, value) => onUpdate(item.id, { [field]: value })

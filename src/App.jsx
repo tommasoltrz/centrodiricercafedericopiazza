@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls, TransformControls, Text3D, Center } from '@react-three/drei'
-import { useControls } from 'leva'
+import { useControls, Leva } from 'leva'
 import Room from './components/Room'
 import Mezzanine from './components/Mezzanine'
 import Bathroom from './components/Bathroom'
@@ -48,12 +48,14 @@ export default function App() {
 
   // ── Furniture state ──────────────────────────────────────────
   const [furnitureItems, setFurnitureItems] = useState(initURL.items)
-  const [selectedId, setSelectedId] = useState(null)
+  const [selectedIds, setSelectedIds] = useState([])
   const [transformMode, setTransformMode] = useState('translate')
 
-  const deselect = useCallback(() => setSelectedId(null), [])
+  const deselect = useCallback(() => setSelectedIds([]), [])
 
-  const selectedItem = furnitureItems.find(i => i.id === selectedId) || null
+  const selectedItems = furnitureItems.filter(i => selectedIds.includes(i.id))
+  // For panel: show single-item controls only when exactly 1 selected
+  const selectedItem = selectedItems.length === 1 ? selectedItems[0] : null
 
   const handleAddParametric = useCallback((presetKey) => {
     const preset = PARAMETRIC_PRESETS[presetKey]
@@ -92,10 +94,15 @@ export default function App() {
     ))
   }, [])
 
+  const handleDeleteSelected = useCallback(() => {
+    setFurnitureItems(prev => prev.filter(item => !selectedIds.includes(item.id)))
+    deselect()
+  }, [selectedIds, deselect])
+
   const handleDelete = useCallback((id) => {
     setFurnitureItems(prev => prev.filter(item => item.id !== id))
-    if (selectedId === id) deselect()
-  }, [selectedId, deselect])
+    setSelectedIds(prev => prev.filter(i => i !== id))
+  }, [])
 
   const handleDuplicate = useCallback((id) => {
     setFurnitureItems(prev => {
@@ -109,34 +116,40 @@ export default function App() {
     })
   }, [])
 
-  const handleSelect = useCallback((id) => {
-    setSelectedId(id)
+  // Click = select single, Shift+click = toggle in/out of multi-select
+  const handleSelect = useCallback((id, shiftKey) => {
+    if (shiftKey) {
+      setSelectedIds(prev =>
+        prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+      )
+    } else {
+      setSelectedIds([id])
+    }
     setTransformMode('translate')
   }, [])
 
   // ── Keyboard shortcuts ───────────────────────────────────────
   useEffect(() => {
     const handler = (e) => {
-      // Don't fire when typing in inputs
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return
 
       if (e.key === 'Escape') {
         deselect()
-      } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
-        handleDelete(selectedId)
-      } else if (e.key === 'r' && selectedId) {
+      } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedIds.length) {
+        handleDeleteSelected()
+      } else if (e.key === 'r' && selectedIds.length) {
         setFurnitureItems(prev => prev.map(item =>
-          item.id === selectedId
+          selectedIds.includes(item.id)
             ? { ...item, rotation: item.rotation + Math.PI / 2 }
             : item
         ))
-      } else if (e.key === 'd' && selectedId) {
-        handleDuplicate(selectedId)
+      } else if (e.key === 'd' && selectedIds.length) {
+        selectedIds.forEach(id => handleDuplicate(id))
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [selectedId, handleDelete, handleDuplicate, deselect])
+  }, [selectedIds, handleDeleteSelected, handleDuplicate, deselect])
 
   // ── Leva controls (initial values from URL) ──────────────────
   const { showNorthWall, showSouthWall, showEastWall, showWestWall, showCeiling, showMeasurements, showGrid, showLighting, bgColor } = useControls('Display', {
@@ -222,8 +235,11 @@ export default function App() {
     })
   }, [furnitureItems])
 
+  const isMobile = window.innerWidth < 768
+
   return (
     <div style={{ width: '100vw', height: '100vh' }}>
+      <Leva collapsed={isMobile} />
       {/* Furniture catalog sidebar */}
       <FurnitureCatalog
         onAddParametric={handleAddParametric}
@@ -233,9 +249,11 @@ export default function App() {
       {/* Furniture edit panel */}
       <FurniturePanel
         item={selectedItem}
+        selectedCount={selectedIds.length}
         transformMode={transformMode}
         onUpdate={handleUpdate}
         onDelete={handleDelete}
+        onDeleteSelected={handleDeleteSelected}
         onDuplicate={handleDuplicate}
         onSetTransformMode={setTransformMode}
       />
@@ -322,7 +340,7 @@ export default function App() {
         {/* Furniture system */}
         <FurnitureManager
           items={furnitureItems}
-          selectedId={selectedId}
+          selectedIds={selectedIds}
           transformMode={transformMode}
           onSelect={handleSelect}
           onUpdate={handleUpdate}
@@ -357,7 +375,7 @@ export default function App() {
         <group position={[0, 0, 30]} rotation={[0, Math.PI, 0]}>
           <Center position={[0, 2.9, 0]}>
             <Text3D
-              font="/helvetiker_bold.typeface.json"
+              font={`${import.meta.env.BASE_URL}helvetiker_bold.typeface.json`}
               size={0.55}
               height={0.18}
               curveSegments={12}
@@ -372,7 +390,7 @@ export default function App() {
           </Center>
           <Center position={[0, 2.1, 0]}>
             <Text3D
-              font="/helvetiker_bold.typeface.json"
+              font={`${import.meta.env.BASE_URL}helvetiker_bold.typeface.json`}
               size={0.55}
               height={0.18}
               curveSegments={12}

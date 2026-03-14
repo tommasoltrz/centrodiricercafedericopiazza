@@ -7,82 +7,125 @@ const MEZZ_FLOOR_Y = 3.2
 
 export default function FurnitureManager({
   items,
-  selectedId,
+  selectedIds,
   transformMode,
   onSelect,
   onUpdate,
   orbitRef,
 }) {
   const transformRef = useRef()
-  // A manually-created THREE.Group that R3F won't reconcile position on
-  const wrapperGroup = useMemo(() => new THREE.Group(), [])
-  const lastPos = useRef({ x: 0, y: 0, z: 0, ry: 0 })
+  const pivotGroup = useMemo(() => new THREE.Group(), [])
 
-  const selectedItem = items.find(i => i.id === selectedId)
-  const floorY = selectedItem?.floor === 'mezzanine' ? MEZZ_FLOOR_Y : 0
+  // Snapshot of each selected item's position/rotation at drag start
+  const startState = useRef({})
+  // Pivot origin at drag start
+  const pivotOrigin = useRef({ x: 0, y: 0, z: 0, ry: 0 })
 
-  // Sync wrapper group to item state (selection change + panel edits)
+  const selectedItems = items.filter(i => selectedIds.includes(i.id))
+  const hasSelection = selectedIds.length > 0
+
+  // Compute centroid of selected items (for pivot placement)
+  const centroid = useMemo(() => {
+    if (!selectedItems.length) return { x: 0, y: 0, z: 0 }
+    const sum = selectedItems.reduce((acc, item) => {
+      const fy = item.floor === 'mezzanine' ? MEZZ_FLOOR_Y : 0
+      return {
+        x: acc.x + item.position[0],
+        y: acc.y + item.position[1] + fy,
+        z: acc.z + item.position[2],
+      }
+    }, { x: 0, y: 0, z: 0 })
+    const n = selectedItems.length
+    return { x: sum.x / n, y: sum.y / n, z: sum.z / n }
+  }, [selectedItems])
+
+  // Position pivot at centroid and snapshot start positions
   useEffect(() => {
-    if (!selectedItem) return
-    const y = selectedItem.position[1] + floorY
-    wrapperGroup.position.set(selectedItem.position[0], y, selectedItem.position[2])
-    wrapperGroup.rotation.set(0, selectedItem.rotation, 0)
-    lastPos.current = {
-      x: selectedItem.position[0],
-      y: selectedItem.position[1],
-      z: selectedItem.position[2],
-      ry: selectedItem.rotation,
-    }
-  }, [selectedId, selectedItem?.rotation, selectedItem?.floor, wrapperGroup, floorY])
+    if (!hasSelection) return
+    pivotGroup.position.set(centroid.x, centroid.y, centroid.z)
+    pivotGroup.rotation.set(0, 0, 0)
+    pivotOrigin.current = { x: centroid.x, y: centroid.y, z: centroid.z, ry: 0 }
 
-  // Write latest transform into state
-  const syncToState = useCallback(() => {
-    if (!selectedId) return
-    const p = lastPos.current
-    onUpdate(selectedId, {
-      position: [p.x, p.y, p.z],
-      rotation: p.ry,
-    })
-  }, [selectedId, onUpdate])
-
-  // Track position in a ref on every objectChange (no state update = no re-render)
-  useEffect(() => {
-    const controls = transformRef.current
-    if (!controls) return
-    const handler = () => {
-      lastPos.current = {
-        x: wrapperGroup.position.x,
-        y: wrapperGroup.position.y - floorY,
-        z: wrapperGroup.position.z,
-        ry: wrapperGroup.rotation.y,
+    const snap = {}
+    for (const item of selectedItems) {
+      const fy = item.floor === 'mezzanine' ? MEZZ_FLOOR_Y : 0
+      snap[item.id] = {
+        x: item.position[0],
+        y: item.position[1] + fy,
+        z: item.position[2],
+        ry: item.rotation,
       }
     }
-    controls.addEventListener('objectChange', handler)
-    return () => controls.removeEventListener('objectChange', handler)
-  }, [selectedId, transformMode, floorY, wrapperGroup])
+    startState.current = snap
+  }, [selectedIds.join(','), items]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Disable orbit while dragging; sync to state on drag end
+  // Sync all selected items to state
+  const syncAllToState = useCallback(() => {
+    if (!hasSelection) return
+    const px = pivotGroup.position.x
+    const py = pivotGroup.position.y
+    const pz = pivotGroup.position.z
+    const pry = pivotGroup.rotation.y
+
+    const ox = pivotOrigin.current.x
+    const oy = pivotOrigin.current.y
+    const oz = pivotOrigin.current.z
+
+    const dx = px - ox
+    const dy = py - oy
+    const dz = pz - oz
+
+    for (const id of selectedIds) {
+      const snap = startState.current[id]
+      if (!snap) continue
+      const item = items.find(i => i.id === id)
+      if (!item) continue
+      const fy = item.floor === 'mezzanine' ? MEZZ_FLOOR_Y : 0
+
+      if (transformMode === 'rotate' && selectedIds.length > 1) {
+        // Rotate each item's position around the pivot
+        const relX = snap.x - ox
+        const relZ = snap.z - oz
+        const cos = Math.cos(pry)
+        const sin = Math.sin(pry)
+        const newX = ox + relX * cos - relZ * sin
+        const newZ = oz + relX * sin + relZ * cos
+        onUpdate(id, {
+          position: [newX, snap.y - fy, newZ],
+          rotation: snap.ry + pry,
+        })
+      } else if (transformMode === 'rotate') {
+        onUpdate(id, { rotation: snap.ry + pry })
+      } else {
+        onUpdate(id, {
+          position: [snap.x + dx, snap.y + dy - fy, snap.z + dz],
+        })
+      }
+    }
+  }, [selectedIds, items, transformMode, onUpdate, hasSelection, pivotGroup])
+
+  // Disable orbit while dragging; sync on drag end
   useEffect(() => {
     const controls = transformRef.current
     if (!controls) return
     const handler = (e) => {
       if (orbitRef?.current) orbitRef.current.enabled = !e.value
-      // Sync to state when drag ends
-      if (!e.value) syncToState()
+      if (!e.value) syncAllToState()
     }
     controls.addEventListener('dragging-changed', handler)
     return () => controls.removeEventListener('dragging-changed', handler)
-  }, [selectedId, orbitRef, syncToState])
+  }, [selectedIds.join(','), orbitRef, syncAllToState]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Sync to state before unmounting (deselection)
+  // Sync before deselection
   useEffect(() => {
-    return () => syncToState()
-  }, [syncToState])
+    return () => syncAllToState()
+  }, [syncAllToState])
 
   return (
     <>
+      {/* Non-selected items */}
       {items.map(item => {
-        if (item.id === selectedId) return null
+        if (selectedIds.includes(item.id)) return null
         return (
           <FurnitureItem
             key={item.id}
@@ -93,25 +136,39 @@ export default function FurnitureManager({
         )
       })}
 
-      {selectedItem && (
+      {/* TransformControls on pivot */}
+      {hasSelection && (
         <TransformControls
           ref={transformRef}
           mode={transformMode}
           translationSnap={0.05}
           rotationSnap={Math.PI / 12}
-          object={wrapperGroup}
+          object={pivotGroup}
         />
       )}
 
-      {/* Wrapper group is a <primitive> so R3F won't reset its position */}
-      <primitive object={wrapperGroup}>
-        {selectedItem && (
-          <FurnitureItem
-            item={selectedItem}
-            isSelected={true}
-            onSelect={onSelect}
-          />
-        )}
+      {/* Pivot group with selected items rendered at world positions */}
+      <primitive object={pivotGroup}>
+        {selectedItems.map(item => {
+          const fy = item.floor === 'mezzanine' ? MEZZ_FLOOR_Y : 0
+          return (
+            <group
+              key={item.id}
+              position={[
+                item.position[0] - centroid.x,
+                item.position[1] + fy - centroid.y,
+                item.position[2] - centroid.z,
+              ]}
+              rotation={[0, item.rotation, 0]}
+            >
+              <FurnitureItem
+                item={item}
+                isSelected={true}
+                onSelect={onSelect}
+              />
+            </group>
+          )
+        })}
       </primitive>
     </>
   )

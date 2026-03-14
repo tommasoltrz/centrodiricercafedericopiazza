@@ -1,11 +1,32 @@
 import { useState, useRef, useEffect } from 'react'
 import { PARAMETRIC_PRESETS, MODEL_REGISTRY, CATEGORIES } from '../data/furnitureCatalog'
 
+const PANEL_WIDTH = 210
+
+const toggleBtnStyle = {
+  position: 'absolute',
+  top: 10,
+  left: 10,
+  width: 36,
+  height: 36,
+  background: 'rgba(20, 20, 20, 0.92)',
+  border: '1px solid #444',
+  borderRadius: 6,
+  color: '#e2e8f0',
+  fontSize: 18,
+  cursor: 'pointer',
+  zIndex: 11,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  transition: 'left 0.25s ease',
+}
+
 const panelStyle = {
   position: 'absolute',
   top: 0,
   left: 0,
-  width: 210,
+  width: PANEL_WIDTH,
   height: '100vh',
   overflowY: 'auto',
   background: 'rgba(20, 20, 20, 0.92)',
@@ -16,6 +37,7 @@ const panelStyle = {
   color: '#e2e8f0',
   zIndex: 10,
   userSelect: 'none',
+  transition: 'transform 0.25s ease',
 }
 
 const tabRow = {
@@ -97,7 +119,6 @@ function CategoryDropdown({ label, items, isPresets, onAdd }) {
   const [open, setOpen] = useState(false)
   const ref = useRef()
 
-  // Close on outside click
   useEffect(() => {
     if (!open) return
     const handler = (e) => {
@@ -150,16 +171,15 @@ function CategoryDropdown({ label, items, isPresets, onAdd }) {
 }
 
 export default function FurnitureCatalog({ onAddParametric, onAddModel }) {
+  const [collapsed, setCollapsed] = useState(() => window.innerWidth < 768)
   const [tab, setTab] = useState('presets')
 
-  // Group models by category
   const modelGrouped = {}
   for (const entry of MODEL_REGISTRY) {
     if (!modelGrouped[entry.category]) modelGrouped[entry.category] = []
     modelGrouped[entry.category].push(entry)
   }
 
-  // Group parametric presets by category
   const parametricGrouped = {}
   for (const [key, preset] of Object.entries(PARAMETRIC_PRESETS)) {
     if (!parametricGrouped[preset.category]) parametricGrouped[preset.category] = []
@@ -170,39 +190,57 @@ export default function FurnitureCatalog({ onAddParametric, onAddModel }) {
   const grouped = isPresets ? modelGrouped : parametricGrouped
 
   return (
-    <div style={panelStyle}>
-      <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 10, color: '#f1f5f9' }}>
-        Furniture
-      </div>
+    <>
+      {/* Toggle button */}
+      <button
+        style={{
+          ...toggleBtnStyle,
+          left: collapsed ? 10 : PANEL_WIDTH + 10,
+        }}
+        onClick={() => setCollapsed(!collapsed)}
+        title={collapsed ? 'Show furniture panel' : 'Hide furniture panel'}
+      >
+        {collapsed ? '▶' : '◀'}
+      </button>
 
-      <div style={tabRow}>
-        <button
-          style={tab === 'presets' ? tabActiveStyle : tabStyle}
-          onClick={() => setTab('presets')}
-        >
-          Presets
-        </button>
-        <button
-          style={tab === 'custom' ? tabActiveStyle : tabStyle}
-          onClick={() => setTab('custom')}
-        >
-          Custom
-        </button>
-      </div>
+      {/* Sidebar */}
+      <div style={{
+        ...panelStyle,
+        transform: collapsed ? `translateX(-${PANEL_WIDTH + 2}px)` : 'translateX(0)',
+      }}>
+        <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 10, color: '#f1f5f9' }}>
+          Furniture
+        </div>
 
-      {CATEGORIES.map(cat => {
-        const items = grouped[cat]
-        if (!items) return null
-        return (
-          <CategoryDropdown
-            key={`${tab}-${cat}`}
-            label={cat}
-            items={items}
-            isPresets={isPresets}
-            onAdd={isPresets ? onAddModel : onAddParametric}
-          />
-        )
-      })}
-    </div>
+        <div style={tabRow}>
+          <button
+            style={tab === 'presets' ? tabActiveStyle : tabStyle}
+            onClick={() => setTab('presets')}
+          >
+            Presets
+          </button>
+          <button
+            style={tab === 'custom' ? tabActiveStyle : tabStyle}
+            onClick={() => setTab('custom')}
+          >
+            Custom
+          </button>
+        </div>
+
+        {CATEGORIES.map(cat => {
+          const items = grouped[cat]
+          if (!items) return null
+          return (
+            <CategoryDropdown
+              key={`${tab}-${cat}`}
+              label={cat}
+              items={items}
+              isPresets={isPresets}
+              onAdd={isPresets ? onAddModel : onAddParametric}
+            />
+          )
+        })}
+      </div>
+    </>
   )
 }

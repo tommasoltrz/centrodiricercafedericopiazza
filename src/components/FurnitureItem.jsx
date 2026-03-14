@@ -6,7 +6,8 @@ const MEZZ_FLOOR_Y = 3.2
 
 // ── GLTF model sub-component ──────────────────────────────────
 function ModelMesh({ path }) {
-  const { scene } = useGLTF(path)
+  const resolvedPath = path.startsWith('/models/') ? `${import.meta.env.BASE_URL}${path.slice(1)}` : path
+  const { scene } = useGLTF(resolvedPath)
   const cloned = useMemo(() => scene.clone(true), [scene])
   return <primitive object={cloned} />
 }
@@ -23,7 +24,7 @@ export default function FurnitureItem({ item, isSelected, onSelect }) {
       ref={groupRef}
       position={isSelected ? [0, 0, 0] : [item.position[0], item.position[1] + floorY, item.position[2]]}
       rotation={isSelected ? [0, 0, 0] : [0, item.rotation, 0]}
-      onClick={e => { e.stopPropagation(); onSelect(item.id) }}
+      onClick={e => { e.stopPropagation(); onSelect(item.id, e.shiftKey) }}
       onPointerOver={() => { document.body.style.cursor = 'pointer' }}
       onPointerOut={() => { document.body.style.cursor = 'default' }}
     >
