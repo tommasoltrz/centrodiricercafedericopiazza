@@ -71,8 +71,14 @@ export function serializeItems(items) {
 }
 
 export function deserializeItems(raw) {
-  const compact = JSON.parse(atob(raw))
-  return compact.map(expandItem)
+  let str = atob(raw)
+  // Handle legacy URL-encoded wrapping
+  if (str.startsWith('%5B') || str.startsWith('%7B')) {
+    str = decodeURIComponent(str)
+  }
+  const arr = JSON.parse(str)
+  // Compact items have `m` or `k` keys; full items have `type`
+  return arr.map(o => (o.m !== undefined || o.k !== undefined) ? expandItem(o) : o)
 }
 
 // ── URL state helpers ─────────────────────────────────────────────────────────
@@ -131,14 +137,7 @@ export function parseURL() {
   let items = DEFAULTS.items
   try {
     const raw = p('items')
-    if (raw) {
-      // Try compact format first, fall back to legacy (full JSON)
-      try {
-        items = deserializeItems(raw)
-      } catch {
-        items = JSON.parse(decodeURIComponent(atob(raw)))
-      }
-    }
+    if (raw) items = deserializeItems(raw)
   } catch {
     items = DEFAULTS.items
   }
