@@ -1,3 +1,4 @@
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
 import { useControls } from 'leva'
@@ -6,6 +7,10 @@ import Mezzanine from './components/Mezzanine'
 import Bathroom from './components/Bathroom'
 import Stairs from './components/Stairs'
 import GroundWall from './components/GroundWall'
+import FurnitureManager from './components/FurnitureManager'
+import FurnitureCatalog from './components/FurnitureCatalog'
+import FurniturePanel from './components/FurniturePanel'
+import { PARAMETRIC_PRESETS } from './data/furnitureCatalog'
 import './index.css'
 
 // ── Fixed dimensions ─────────────────────────────────────────────
@@ -35,16 +40,128 @@ const winW    = 2.0;  const winH    = 2.0;  const winSill = 0.9;  const winX = -
 // ─────────────────────────────────────────────────────────────────
 
 export default function App() {
+  const orbitRef = useRef()
 
-  const { showWalls, showCeiling, showMeasurements, showGrid, bgColor } = useControls('Display', {
-    showWalls:        { value: true,      label: 'Show walls'        },
-    showCeiling:      { value: true,      label: 'Show ceiling'      },
-    showMeasurements: { value: true,      label: 'Show measurements' },
-    showGrid:         { value: true,      label: 'Show grid'         },
+  // ── Furniture state ──────────────────────────────────────────
+  const [furnitureItems, setFurnitureItems] = useState([])
+  const [selectedId, setSelectedId] = useState(null)
+  const [transformMode, setTransformMode] = useState('translate')
+
+  const selectedItem = furnitureItems.find(i => i.id === selectedId) || null
+
+  const handleAddParametric = useCallback((presetKey) => {
+    const preset = PARAMETRIC_PRESETS[presetKey]
+    if (!preset) return
+    setFurnitureItems(prev => [...prev, {
+      id: crypto.randomUUID(),
+      type: 'parametric',
+      preset: presetKey,
+      label: preset.label,
+      position: [0, 0, 0],
+      rotation: 0,
+      width: preset.defaultWidth,
+      height: preset.defaultHeight,
+      depth: preset.defaultDepth,
+      color: preset.defaultColor,
+      floor: 'ground',
+    }])
+  }, [])
+
+  const handleAddModel = useCallback((entry) => {
+    setFurnitureItems(prev => [...prev, {
+      id: crypto.randomUUID(),
+      type: 'model',
+      modelPath: entry.path,
+      label: entry.label,
+      position: [0, 0, 0],
+      rotation: 0,
+      scale: 1.0,
+      floor: 'ground',
+    }])
+  }, [])
+
+  const handleUpdate = useCallback((id, updates) => {
+    setFurnitureItems(prev => prev.map(item =>
+      item.id === id ? { ...item, ...updates } : item
+    ))
+  }, [])
+
+  const handleDelete = useCallback((id) => {
+    setFurnitureItems(prev => prev.filter(item => item.id !== id))
+    if (selectedId === id) setSelectedId(null)
+  }, [selectedId])
+
+  const handleDuplicate = useCallback((id) => {
+    setFurnitureItems(prev => {
+      const source = prev.find(i => i.id === id)
+      if (!source) return prev
+      return [...prev, {
+        ...source,
+        id: crypto.randomUUID(),
+        position: [source.position[0] + 0.5, source.position[1], source.position[2] + 0.5],
+      }]
+    })
+  }, [])
+
+  const handleSelect = useCallback((id) => {
+    setSelectedId(id)
+    setTransformMode('translate')
+  }, [])
+
+  // ── Keyboard shortcuts ───────────────────────────────────────
+  useEffect(() => {
+    const handler = (e) => {
+      // Don't fire when typing in inputs
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return
+
+      if (e.key === 'Escape') {
+        setSelectedId(null)
+      } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
+        handleDelete(selectedId)
+      } else if (e.key === 'r' && selectedId) {
+        setFurnitureItems(prev => prev.map(item =>
+          item.id === selectedId
+            ? { ...item, rotation: item.rotation + Math.PI / 2 }
+            : item
+        ))
+      } else if (e.key === 'd' && selectedId) {
+        handleDuplicate(selectedId)
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [selectedId, handleDelete, handleDuplicate])
+
+  // ── Leva controls ────────────────────────────────────────────
+  const { showNorthWall, showSouthWall, showEastWall, showWestWall, showCeiling, showMeasurements, showGrid, showLighting, bgColor } = useControls('Display', {
+    showNorthWall:    { value: true,      label: 'North wall'        },
+    showSouthWall:    { value: true,      label: 'South wall'        },
+    showEastWall:     { value: true,      label: 'East wall'         },
+    showWestWall:     { value: true,      label: 'West wall'         },
+    showCeiling:      { value: true,      label: 'Ceiling'           },
+    showMeasurements: { value: true,      label: 'Measurements'      },
+    showGrid:         { value: true,      label: 'Grid'              },
+    showLighting:     { value: true,      label: 'Lighting'          },
     bgColor:          { value: '#1a1a1a', label: 'Background'        },
   })
 
-const { roomWallColor, roomWallOpacity, bathWallColor, groundWallColor, railColor, mezzColor } = useControls('Colors', {
+  const { ambientInt, topInt, frontInt, backInt } = useControls('Lighting', {
+    ambientInt: { value: 0.8, min: 0, max: 2, step: 0.05, label: 'Ambient'   },
+    topInt:     { value: 0.5, min: 0, max: 2, step: 0.05, label: 'Top'       },
+    frontInt:   { value: 0.7, min: 0, max: 2, step: 0.05, label: 'Front'     },
+    backInt:    { value: 0.3, min: 0, max: 2, step: 0.05, label: 'Back'      },
+  })
+
+  const { plX, plY, plZ, plInt, plDist, plOn } = useControls('Point Light', {
+    plOn:   { value: false, label: 'Enabled'   },
+    plX:    { value: 0,  min: -roomWidth / 2, max: roomWidth / 2, step: 0.1, label: 'X' },
+    plY:    { value: 3,  min: 0,              max: roofHighHeight, step: 0.1, label: 'Y' },
+    plZ:    { value: 0,  min: -roomDepth / 2, max: roomDepth / 2, step: 0.1, label: 'Z' },
+    plInt:  { value: 5,  min: 0, max: 20, step: 0.5, label: 'Intensity' },
+    plDist: { value: 10, min: 1, max: 30, step: 0.5, label: 'Distance'  },
+  })
+
+  const { roomWallColor, roomWallOpacity, bathWallColor, groundWallColor, railColor, mezzColor } = useControls('Colors', {
     roomWallColor:   { value: '#ffffff', label: 'Room walls'         },
     roomWallOpacity: { value: 0.18, min: 0, max: 1, step: 0.01, label: 'Room walls opacity' },
     bathWallColor:   { value: '#ffffff', label: 'Bathroom walls'     },
@@ -55,12 +172,38 @@ const { roomWallColor, roomWallOpacity, bathWallColor, groundWallColor, railColo
 
   return (
     <div style={{ width: '100vw', height: '100vh' }}>
-      <Canvas camera={{ position: [12, 9, 14], fov: 45 }}>
+      {/* Furniture catalog sidebar */}
+      <FurnitureCatalog
+        onAddParametric={handleAddParametric}
+        onAddModel={handleAddModel}
+      />
+
+      {/* Furniture edit panel */}
+      <FurniturePanel
+        item={selectedItem}
+        transformMode={transformMode}
+        onUpdate={handleUpdate}
+        onDelete={handleDelete}
+        onDuplicate={handleDuplicate}
+        onSetTransformMode={setTransformMode}
+      />
+
+      <Canvas
+        camera={{ position: [12, 9, 14], fov: 45 }}
+        onPointerMissed={() => setSelectedId(null)}
+      >
         <color attach="background" args={[bgColor]} />
 
-        <ambientLight intensity={0.8} />
-        <directionalLight position={[10, 15, 10]} intensity={0.7} />
-        <directionalLight position={[-6, 8, -6]} intensity={0.3} />
+        {showLighting ? (
+          <>
+            <ambientLight intensity={ambientInt} />
+            <directionalLight position={[10, 15, 10]} intensity={frontInt} />
+            <directionalLight position={[-6, 8, -6]} intensity={backInt} />
+            <directionalLight position={[0, 20, 0]} intensity={topInt} />
+          </>
+        ) : (
+          <ambientLight intensity={1} />
+        )}
 
         <Room
           roomWidth={roomWidth}
@@ -73,9 +216,10 @@ const { roomWallColor, roomWallOpacity, bathWallColor, groundWallColor, railColo
           wallOpacity={roomWallOpacity}
           skylightW={2.7} skylightD={3.7} skylightGap={2.1} skylightCZ={0.1}
           showRoof={showCeiling}
-          showLateralWalls={showWalls}
-          showNorthWall={showWalls}
-          showSouthWall={showWalls}
+          showEastWall={showEastWall}
+          showWestWall={showWestWall}
+          showNorthWall={showNorthWall}
+          showSouthWall={showSouthWall}
           showMeasurements={showMeasurements}
         />
 
@@ -123,9 +267,29 @@ const { roomWallColor, roomWallOpacity, bathWallColor, groundWallColor, railColo
           wallColor={bathWallColor}
         />
 
+        {/* Furniture system */}
+        <FurnitureManager
+          items={furnitureItems}
+          selectedId={selectedId}
+          transformMode={transformMode}
+          onSelect={handleSelect}
+          onUpdate={handleUpdate}
+          orbitRef={orbitRef}
+        />
+
+        {plOn && (
+          <group position={[plX, plY, plZ]}>
+            <pointLight intensity={plInt} distance={plDist} color="#fff9f0" />
+            <mesh>
+              <sphereGeometry args={[0.12, 12, 12]} />
+              <meshBasicMaterial color="#ffe066" />
+            </mesh>
+          </group>
+        )}
+
         {showGrid && <gridHelper args={[60, 60, '#cbd5e1', '#e2e8f0']} position={[0, 0.001, 0]} />}
 
-        <OrbitControls makeDefault target={[0, roofLowHeight / 2, 0]} />
+        <OrbitControls ref={orbitRef} makeDefault target={[0, roofLowHeight / 2, 0]} />
         <axesHelper args={[1.5]} />
       </Canvas>
     </div>

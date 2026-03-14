@@ -48,7 +48,7 @@ function WallWithOpenings({ w, h, d, position,
   return (
     <group position={[position[0], position[1], position[2] - d / 2]}>
       <mesh geometry={geo}>
-        <meshBasicMaterial color={color} transparent opacity={opacity} side={THREE.DoubleSide} depthWrite={false} />
+        <meshStandardMaterial color={color} transparent opacity={opacity} side={THREE.DoubleSide} depthWrite={false} />
       </mesh>
       <lineSegments geometry={edgesGeo}>
         <lineBasicMaterial color={EDGE_COLOR} />
@@ -58,7 +58,7 @@ function WallWithOpenings({ w, h, d, position,
 }
 
 // Flat rectangular wall (for front/back)
-function RectWall({ w, h, d, position, color = WALL_COLOR, opacity = 0.18 }) {
+function RectWall({ w, h, d, position, color = WALL_COLOR, opacity = 0.18, depthWrite = false }) {
   const [boxGeo, edgesGeo] = useMemo(() => {
     const box = new THREE.BoxGeometry(w, h, d)
     return [box, new THREE.EdgesGeometry(box)]
@@ -68,7 +68,7 @@ function RectWall({ w, h, d, position, color = WALL_COLOR, opacity = 0.18 }) {
   return (
     <group position={position}>
       <mesh geometry={boxGeo}>
-        <meshBasicMaterial color={color} transparent opacity={opacity} side={THREE.DoubleSide} depthWrite={false} />
+        <meshStandardMaterial color={color} transparent opacity={opacity} side={THREE.DoubleSide} depthWrite={depthWrite} />
       </mesh>
       <lineSegments geometry={edgesGeo}>
         <lineBasicMaterial color={EDGE_COLOR} />
@@ -97,7 +97,7 @@ function TrapWall({ depth, lowH, highH, position, color = WALL_COLOR, opacity = 
   return (
     <group position={position}>
       <mesh geometry={geo}>
-        <meshBasicMaterial color={color} transparent opacity={opacity} side={THREE.DoubleSide} depthWrite={false} />
+        <meshStandardMaterial color={color} transparent opacity={opacity} side={THREE.DoubleSide} depthWrite={false} />
       </mesh>
       <lineSegments geometry={edgesGeo}>
         <lineBasicMaterial color={EDGE_COLOR} />
@@ -129,7 +129,7 @@ function RoofQuad({ x0, x1, z0, z1, depth, lowH, highH, color, opacity }) {
   return (
     <group>
       <mesh geometry={geo}>
-        <meshBasicMaterial color={color} transparent opacity={opacity} side={THREE.DoubleSide} depthWrite={false} />
+        <meshStandardMaterial color={color} transparent opacity={opacity} side={THREE.DoubleSide} depthWrite={false} />
       </mesh>
       <lineSegments geometry={edgesGeo}>
         <lineBasicMaterial color={EDGE_COLOR} />
@@ -191,7 +191,7 @@ function Label({ position, text }) {
   )
 }
 
-export default function Room({ roomWidth, roomDepth, roofLowHeight, roofHighHeight, showRoof, showLateralWalls = true, showNorthWall = true, showSouthWall = true, showMeasurements,
+export default function Room({ roomWidth, roomDepth, roofLowHeight, roofHighHeight, showRoof, showEastWall = true, showWestWall = true, showNorthWall = true, showSouthWall = true, showMeasurements,
   doorW = 1.0, doorH = 2.2, doorX = -1.0,
   winW  = 1.2, winH  = 1.2, winSill = 0.9, winX = 1.5,
   wallColor = WALL_COLOR, wallOpacity = 0.18,
@@ -203,7 +203,7 @@ export default function Room({ roomWidth, roomDepth, roofLowHeight, roofHighHeig
   return (
     <group>
       {/* Floor */}
-      <RectWall w={roomWidth} h={0.05} d={roomDepth} position={[0, -0.025, 0]} />
+      <RectWall w={roomWidth} h={0.05} d={roomDepth} position={[0, -0.025, 0]} color='#888888' opacity={1} depthWrite={true} />
 
       {/* South wall (front, tall end — mezzanine side) */}
       {showSouthWall && <RectWall w={roomWidth} h={roofHighHeight} d={WALL_T} position={[0, roofHighHeight / 2, hd]} color={wallColor} opacity={wallOpacity} />}
@@ -219,10 +219,10 @@ export default function Room({ roomWidth, roomDepth, roofLowHeight, roofHighHeig
       )}
 
       {/* East wall (trapezoidal) */}
-      {showLateralWalls && <TrapWall depth={roomDepth} lowH={roofLowHeight} highH={roofHighHeight} position={[hw, 0, 0]} color={wallColor} opacity={wallOpacity} />}
+      {showEastWall && <TrapWall depth={roomDepth} lowH={roofLowHeight} highH={roofHighHeight} position={[hw, 0, 0]} color={wallColor} opacity={wallOpacity} />}
 
       {/* West wall (trapezoidal) */}
-      {showLateralWalls && <TrapWall depth={roomDepth} lowH={roofLowHeight} highH={roofHighHeight} position={[-hw, 0, 0]} color={wallColor} opacity={wallOpacity} />}
+      {showWestWall && <TrapWall depth={roomDepth} lowH={roofLowHeight} highH={roofHighHeight} position={[-hw, 0, 0]} color={wallColor} opacity={wallOpacity} />}
 
       {/* Sloped roof */}
       {showRoof && (

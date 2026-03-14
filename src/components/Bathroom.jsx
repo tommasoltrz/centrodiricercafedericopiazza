@@ -17,7 +17,7 @@ function PartitionWall({ w, h, d, position, color = WALL_COLOR }) {
   return (
     <group position={position}>
       <mesh geometry={boxGeo}>
-        <meshBasicMaterial color={color} transparent opacity={0.9} side={THREE.DoubleSide} depthWrite={false} />
+        <meshStandardMaterial color={color} transparent opacity={0.9} side={THREE.DoubleSide} depthWrite={false} />
       </mesh>
       <lineSegments geometry={edgesGeo}>
         <lineBasicMaterial color={EDGE_COLOR} />

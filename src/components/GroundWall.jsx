@@ -20,7 +20,7 @@ export default function GroundWall({ roomWidth, roomDepth, mezzHeight, distFromS
   return (
     <group position={[x, h / 2, z]}>
       <mesh geometry={geo}>
-        <meshBasicMaterial color={wallColor} transparent opacity={0.9} side={THREE.DoubleSide} depthWrite={false} />
+        <meshStandardMaterial color={wallColor} transparent opacity={0.9} side={THREE.DoubleSide} depthWrite={false} />
       </mesh>
       <lineSegments geometry={edges}>
         <lineBasicMaterial color={EDGE_COLOR} />
