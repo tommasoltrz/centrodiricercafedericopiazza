@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { OrbitControls } from '@react-three/drei'
+import { OrbitControls, TransformControls } from '@react-three/drei'
 import { useControls } from 'leva'
 import Room from './components/Room'
 import Mezzanine from './components/Mezzanine'
@@ -41,11 +41,18 @@ const winW    = 2.0;  const winH    = 2.0;  const winSill = 0.9;  const winX = -
 
 export default function App() {
   const orbitRef = useRef()
+  const flushRef = useRef(null)
 
   // ── Furniture state ──────────────────────────────────────────
   const [furnitureItems, setFurnitureItems] = useState([])
   const [selectedId, setSelectedId] = useState(null)
   const [transformMode, setTransformMode] = useState('translate')
+
+  // Flush transform position to state, then deselect
+  const deselect = useCallback(() => {
+    if (flushRef.current) flushRef.current()
+    setSelectedId(null)
+  }, [])
 
   const selectedItem = furnitureItems.find(i => i.id === selectedId) || null
 
@@ -88,8 +95,8 @@ export default function App() {
 
   const handleDelete = useCallback((id) => {
     setFurnitureItems(prev => prev.filter(item => item.id !== id))
-    if (selectedId === id) setSelectedId(null)
-  }, [selectedId])
+    if (selectedId === id) deselect()
+  }, [selectedId, deselect])
 
   const handleDuplicate = useCallback((id) => {
     setFurnitureItems(prev => {
@@ -115,7 +122,7 @@ export default function App() {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return
 
       if (e.key === 'Escape') {
-        setSelectedId(null)
+        deselect()
       } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
         handleDelete(selectedId)
       } else if (e.key === 'r' && selectedId) {
@@ -130,40 +137,39 @@ export default function App() {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [selectedId, handleDelete, handleDuplicate])
+  }, [selectedId, handleDelete, handleDuplicate, deselect])
 
   // ── Leva controls ────────────────────────────────────────────
   const { showNorthWall, showSouthWall, showEastWall, showWestWall, showCeiling, showMeasurements, showGrid, showLighting, bgColor } = useControls('Display', {
     showNorthWall:    { value: true,      label: 'North wall'        },
     showSouthWall:    { value: true,      label: 'South wall'        },
-    showEastWall:     { value: true,      label: 'East wall'         },
+    showEastWall:     { value: false,     label: 'East wall'         },
     showWestWall:     { value: true,      label: 'West wall'         },
     showCeiling:      { value: true,      label: 'Ceiling'           },
     showMeasurements: { value: true,      label: 'Measurements'      },
     showGrid:         { value: true,      label: 'Grid'              },
     showLighting:     { value: true,      label: 'Lighting'          },
-    bgColor:          { value: '#1a1a1a', label: 'Background'        },
+    bgColor:          { value: '#908c8c', label: 'Background'        },
   })
 
   const { ambientInt, topInt, frontInt, backInt } = useControls('Lighting', {
     ambientInt: { value: 0.8, min: 0, max: 2, step: 0.05, label: 'Ambient'   },
-    topInt:     { value: 0.5, min: 0, max: 2, step: 0.05, label: 'Top'       },
-    frontInt:   { value: 0.7, min: 0, max: 2, step: 0.05, label: 'Front'     },
-    backInt:    { value: 0.3, min: 0, max: 2, step: 0.05, label: 'Back'      },
+    topInt:     { value: 0.0, min: 0, max: 2, step: 0.05, label: 'Top'       },
+    frontInt:   { value: 0.0, min: 0, max: 2, step: 0.05, label: 'Front'     },
+    backInt:    { value: 0.0, min: 0, max: 2, step: 0.05, label: 'Back'      },
   })
 
-  const { plX, plY, plZ, plInt, plDist, plOn } = useControls('Point Light', {
-    plOn:   { value: false, label: 'Enabled'   },
-    plX:    { value: 0,  min: -roomWidth / 2, max: roomWidth / 2, step: 0.1, label: 'X' },
-    plY:    { value: 3,  min: 0,              max: roofHighHeight, step: 0.1, label: 'Y' },
-    plZ:    { value: 0,  min: -roomDepth / 2, max: roomDepth / 2, step: 0.1, label: 'Z' },
-    plInt:  { value: 5,  min: 0, max: 20, step: 0.5, label: 'Intensity' },
-    plDist: { value: 10, min: 1, max: 30, step: 0.5, label: 'Distance'  },
+  const { plOn, plInt, plDist } = useControls('Point Light', {
+    plOn:   { value: true,  label: 'Enabled'   },
+    plInt:  { value: 500, min: 0, max: 500, step: 5,   label: 'Intensity' },
+    plDist: { value: 17,  min: 1, max: 100, step: 1,   label: 'Distance'  },
   })
+
+  const [plObject, setPlObject] = useState(null)
 
   const { roomWallColor, roomWallOpacity, bathWallColor, groundWallColor, railColor, mezzColor } = useControls('Colors', {
     roomWallColor:   { value: '#ffffff', label: 'Room walls'         },
-    roomWallOpacity: { value: 0.18, min: 0, max: 1, step: 0.01, label: 'Room walls opacity' },
+    roomWallOpacity: { value: 1.0,  min: 0, max: 1, step: 0.01, label: 'Room walls opacity' },
     bathWallColor:   { value: '#ffffff', label: 'Bathroom walls'     },
     groundWallColor: { value: '#ffffff', label: 'Wall below mezz.'   },
     railColor:       { value: '#ffffff', label: 'Rails'              },
@@ -190,7 +196,7 @@ export default function App() {
 
       <Canvas
         camera={{ position: [12, 9, 14], fov: 45 }}
-        onPointerMissed={() => setSelectedId(null)}
+        onPointerMissed={deselect}
       >
         <color attach="background" args={[bgColor]} />
 
@@ -275,19 +281,30 @@ export default function App() {
           onSelect={handleSelect}
           onUpdate={handleUpdate}
           orbitRef={orbitRef}
+          flushRef={flushRef}
         />
 
         {plOn && (
-          <group position={[plX, plY, plZ]}>
-            <pointLight intensity={plInt} distance={plDist} color="#fff9f0" />
-            <mesh>
-              <sphereGeometry args={[0.12, 12, 12]} />
-              <meshBasicMaterial color="#ffe066" />
-            </mesh>
-          </group>
+          <>
+            <group ref={setPlObject} position={[0, 15, -5]}>
+              <pointLight intensity={plInt} distance={plDist} color="#fffbe6" />
+              <mesh>
+                <sphereGeometry args={[0.15, 16, 16]} />
+                <meshBasicMaterial color="#ffe066" />
+              </mesh>
+            </group>
+            {plObject && (
+              <TransformControls
+                object={plObject}
+                mode="translate"
+                onMouseDown={() => orbitRef.current && (orbitRef.current.enabled = false)}
+                onMouseUp={() => orbitRef.current && (orbitRef.current.enabled = true)}
+              />
+            )}
+          </>
         )}
 
-        {showGrid && <gridHelper args={[60, 60, '#cbd5e1', '#e2e8f0']} position={[0, 0.001, 0]} />}
+        {showGrid && <gridHelper args={[60, 60, '#cbd5e1', '#e2e8f0']} position={[0, -0.03, 0]} />}
 
         <OrbitControls ref={orbitRef} makeDefault target={[0, roofLowHeight / 2, 0]} />
         <axesHelper args={[1.5]} />

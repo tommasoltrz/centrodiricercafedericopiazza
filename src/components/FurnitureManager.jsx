@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, useCallback } from 'react'
 import { TransformControls } from '@react-three/drei'
 import FurnitureItem from './FurnitureItem'
 
@@ -11,40 +11,40 @@ export default function FurnitureManager({
   onSelect,
   onUpdate,
   orbitRef,
+  flushRef,
 }) {
   const transformRef = useRef()
   const selectedGroupRef = useRef()
-  const isDragging = useRef(false)
 
   const selectedItem = items.find(i => i.id === selectedId)
   const floorY = selectedItem?.floor === 'mezzanine' ? MEZZ_FLOOR_Y : 0
 
-  // Disable orbit controls while dragging, and sync state on drag end
+  // Flush: read current position/rotation from the 3D object and sync to state
+  const flush = useCallback(() => {
+    const obj = selectedGroupRef.current
+    if (!obj || !selectedId) return
+    onUpdate(selectedId, {
+      position: [obj.position.x, 0, obj.position.z],
+      rotation: obj.rotation.y,
+    })
+  }, [selectedId, onUpdate])
+
+  // Expose flush to parent via ref
+  useEffect(() => {
+    if (flushRef) flushRef.current = flush
+  }, [flush, flushRef])
+
+  // Disable orbit controls while dragging, and sync on drag end
   useEffect(() => {
     const controls = transformRef.current
     if (!controls) return
-
     const handler = (e) => {
       if (orbitRef?.current) orbitRef.current.enabled = !e.value
-      isDragging.current = e.value
-
-      // Sync position/rotation to React state when drag ends
-      if (!e.value && selectedItem && selectedGroupRef.current) {
-        const obj = selectedGroupRef.current
-        if (transformMode === 'translate') {
-          onUpdate(selectedItem.id, {
-            position: [obj.position.x, 0, obj.position.z],
-          })
-        } else if (transformMode === 'rotate') {
-          onUpdate(selectedItem.id, {
-            rotation: obj.rotation.y,
-          })
-        }
-      }
+      if (!e.value) flush()
     }
     controls.addEventListener('dragging-changed', handler)
     return () => controls.removeEventListener('dragging-changed', handler)
-  }, [selectedId, selectedItem, transformMode, onUpdate, orbitRef])
+  }, [selectedId, orbitRef, flush])
 
   // Clamp Y to floor level during translate drag
   useEffect(() => {
@@ -73,7 +73,6 @@ export default function FurnitureManager({
         )
       })}
 
-      {/* Selected item with TransformControls */}
       {selectedItem && (
         <TransformControls
           ref={transformRef}
