@@ -180,13 +180,14 @@ export default function App() {
   const [plObject, setPlObject] = useState(null)
   const [plPos, setPlPos] = useState([initURL.plX, initURL.plY, initURL.plZ])
 
-  const { roomWallColor, roomWallOpacity, bathWallColor, groundWallColor, railColor, mezzColor } = useControls('Colors', {
+  const { roomWallColor, roomWallOpacity, bathWallColor, groundWallColor, railColor, mezzColor, gridColor } = useControls('Colors', {
     roomWallColor:   { value: initURL.roomWallColor,   label: 'Room walls'         },
     roomWallOpacity: { value: initURL.roomWallOpacity, min: 0, max: 1, step: 0.01, label: 'Room walls opacity' },
     bathWallColor:   { value: initURL.bathWallColor,   label: 'Bathroom walls'     },
     groundWallColor: { value: initURL.groundWallColor, label: 'Wall below mezz.'   },
     railColor:       { value: initURL.railColor,       label: 'Rails'              },
     mezzColor:       { value: initURL.mezzColor,       label: 'Mezzanine floor'    },
+    gridColor:       { value: initURL.gridColor,       label: 'Grid'               },
   })
 
   // ── Write URL when state changes ──────────────────────────────
@@ -224,8 +225,9 @@ export default function App() {
       gwc: groundWallColor.replace('#', ''),
       rc:  railColor.replace('#', ''),
       mc:  mezzColor.replace('#', ''),
+      gc:  gridColor.replace('#', ''),
     })
-  }, [roomWallColor, roomWallOpacity, bathWallColor, groundWallColor, railColor, mezzColor])
+  }, [roomWallColor, roomWallOpacity, bathWallColor, groundWallColor, railColor, mezzColor, gridColor])
 
   useEffect(() => {
     writeURL({
@@ -403,7 +405,7 @@ export default function App() {
           </Center>
         </group>
 
-        {showGrid && <gridHelper args={[60, 60, '#cbd5e1', '#e2e8f0']} position={[0, -0.03, 0]} />}
+        {showGrid && <gridHelper args={[60, 60, gridColor, gridColor]} position={[0, -0.03, 0]} />}
 
         <OrbitControls ref={orbitRef} makeDefault target={[0, roofLowHeight / 2, 0]} enableDamping={false} />
         <axesHelper args={[1.5]} />

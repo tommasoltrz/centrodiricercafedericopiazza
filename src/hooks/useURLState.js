@@ -119,6 +119,7 @@ const DEFAULTS = {
   groundWallColor:  '#ffffff',
   railColor:        '#ffffff',
   mezzColor:        '#7c3a0e',
+  gridColor:        '#cbd5e1',
   items:            [],
 }
 
@@ -177,6 +178,7 @@ export function parseURL() {
     groundWallColor:  parseColor(p('gwc'), DEFAULTS.groundWallColor),
     railColor:        parseColor(p('rc'),  DEFAULTS.railColor),
     mezzColor:        parseColor(p('mc'),  DEFAULTS.mezzColor),
+    gridColor:        parseColor(p('gc'),  DEFAULTS.gridColor),
     items,
   }
 }
